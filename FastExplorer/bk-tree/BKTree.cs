@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 
 /*
@@ -24,97 +26,117 @@ using System.Collections.Generic;
  * by Mike Karlesky.
  */
 
-namespace BKTree
+namespace FastExplorer.bk_tree;
+
+[Serializable]
+public class BKTree
 {
-    public class BKTree<T> where T : BKTreeNode
+    private volatile BKTreeNode _root = new("");
+
+    private readonly Dictionary<BKTreeNode, Int32> _matches = new();
+
+    public void add(BKTreeNode node)
     {
-        private T _root;
-
-        private readonly Dictionary<T, Int32> _matches;
-
-        public BKTree()
+        if (_root != null)
         {
-            _root    = null;
-            _matches = new Dictionary<T,Int32>();
+            _root.Add(node);
         }
-
-        public void add(T node)
+        else
         {
-            if (_root != null)
-            {
-                _root.add(node);
-            }
-            else
-            {
-                _root = node;
-            }
-        }
-
-        /**
-         * This method will find all the close matching Nodes within
-         * a certain threshold.  For instance, to search for similar
-         * strings, threshold set to 1 will return all the strings that
-         * are off by 1 edit distance.
-         * @param searchNode
-         * @param threshold
-         * @return
-         */
-        public Dictionary<T, Int32> query(BKTreeNode searchNode, int threshold)
-        {
-            Dictionary<BKTreeNode, Int32> matches = new Dictionary<BKTreeNode, Int32>();
-
-            _root.query(searchNode, threshold, matches);
-
-            return copyMatches(matches);
-        }
-
-        /**
-         * Attempts to find the closest match to the search node.
-         * @param node 
-         * @return The edit distance of the best match
-         */
-        public int findBestDistance(BKTreeNode node)
-        {
-            BKTreeNode bestNode;
-            return _root.findBestMatch(node, Int32.MaxValue, out bestNode);
-        }
-
-        /**
-         * Attempts to find the closest match to the search node.
-         * @param node
-         * @return A match that is within the best edit distance of the search node.
-         */
-        public T findBestNode(BKTreeNode node)
-        {
-            BKTreeNode bestNode;
-            _root.findBestMatch(node, Int32.MaxValue, out bestNode);
-            return (T)bestNode;
-        }
-
-        /**
-         * Attempts to find the closest match to the search node.
-         * @param node
-         * @return A match that is within the best edit distance of the search node.
-         */
-        public Dictionary<T, Int32> findBestNodeWithDistance(BKTreeNode node)
-        {
-            BKTreeNode bestNode;
-            int distance = _root.findBestMatch(node, Int32.MaxValue, out bestNode);
-            _matches.Clear();
-            _matches.Add((T)bestNode, distance);
-            return _matches;
-        }
-
-        private Dictionary<T,Int32> copyMatches(Dictionary<BKTreeNode,Int32>source)
-        {
-            _matches.Clear();
-
-            foreach (KeyValuePair<BKTreeNode, Int32> pair in source)
-            {
-                _matches.Add((T)pair.Key, pair.Value);
-            }
-
-            return _matches;
+            _root = node;
         }
     }
+
+    /**
+     * This method will find all the close matching Nodes within
+     * a certain threshold.  For instance, to search for similar
+     * strings, threshold set to 1 will return all the strings that
+     * are off by 1 edit distance.
+     * @param searchNode
+     * @param threshold
+     * @return
+     */
+    public Dictionary<BKTreeNode, Int32> query(BKTreeNode searchNode, int threshold)
+    {
+        Dictionary<BKTreeNode, Int32> matches = new Dictionary<BKTreeNode, Int32>();
+
+        _root.Query(searchNode, threshold, matches);
+
+        return copyMatches(matches);
+    }
+
+    /**
+     * Attempts to find the closest match to the search node.
+     * @param node
+     * @return The edit distance of the best match
+     */
+    public int findBestDistance(BKTreeNode node)
+    {
+        BKTreeNode bestNode;
+        return _root.FindBestMatch(node, Int32.MaxValue, out bestNode);
+    }
+
+    /**
+     * Attempts to find the closest match to the search node.
+     * @param node
+     * @return A match that is within the best edit distance of the search node.
+     */
+    public BKTreeNode findBestNode(BKTreeNode node)
+    {
+        BKTreeNode bestNode;
+        _root.FindBestMatch(node, Int32.MaxValue, out bestNode);
+        return (BKTreeNode)bestNode;
+    }
+
+    /**
+     * Attempts to find the closest match to the search node.
+     * @param node
+     * @return A match that is within the best edit distance of the search node.
+     */
+    public Dictionary<BKTreeNode, Int32> findBestNodeWithDistance(BKTreeNode node)
+    {
+        BKTreeNode bestNode;
+        int distance = _root.FindBestMatch(node, Int32.MaxValue, out bestNode);
+        _matches.Clear();
+        _matches.Add((BKTreeNode)bestNode, distance);
+        return _matches;
+    }
+
+    private Dictionary<BKTreeNode,Int32> copyMatches(Dictionary<BKTreeNode,Int32>source)
+    {
+        _matches.Clear();
+
+        foreach (KeyValuePair<BKTreeNode, Int32> pair in source)
+        {
+            _matches.Add((BKTreeNode)pair.Key, pair.Value);
+        }
+
+        return _matches;
+    }
+    
+
+    public BKTreeNode getRoot()
+    {
+        return _root;
+    }
+    
+    // public JObject ToJson()
+    // {
+    //     JsonSerializer serializer = new JsonSerializer();
+    //     serializer.MaxDepth = 1024;
+    //     
+    //     return JObject.FromObject(_root, serializer);
+    // }
+    //
+    // public void FromJson(JObject? tree)
+    // {
+    //     JsonSerializer serializer = new JsonSerializer
+    //     {
+    //         MaxDepth = 1024
+    //     };
+    //     
+    //     _root = tree.ToObject<BKTreeNode>(serializer);
+    //     
+    //     Console.WriteLine(_root.GetChildNodes()[0].Data);
+    // }
 }

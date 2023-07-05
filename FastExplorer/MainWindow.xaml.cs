@@ -1,11 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
-using BKTree;
+using FastExplorer.bk_tree;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Path = System.IO.Path;
 
 namespace FastExplorer;
@@ -13,77 +17,32 @@ namespace FastExplorer;
 public partial class MainWindow : Window
 {
 
-    private static List<string> _paths = new();
+    private static volatile List<string> _paths = new();
 
-    private static BKTree<CharNode> _tree = new();
+    private static volatile BKTree _tree = new();
     private static long _totalPaths;
 
     private static string prevQuery = "";
 
-    public static int maxLength;
-
-    public static bool ready = false; //DEBUG
+    private static int maxLength;
+    private static int stackSize = 1024;
 
     public MainWindow()
     {
         InitializeComponent();
     }
     
-    private static void DirectorySearch(string dir)
-    {
-        try
-        {
-            foreach (string f in Directory.GetFiles(dir))
-            {
-                _paths.Add(Path.GetFullPath(f));
-
-                if (Path.GetFileName(f).Length > maxLength)
-                    maxLength = Path.GetFileName(f).Length;
-            }
-
-            foreach (string d in Directory.GetDirectories(dir))
-            {
-                _paths.Add(Path.GetFullPath(d));
-                
-                DirectorySearch(d);
-            }
-        }
-        catch (Exception) {}
-
-    }
-
-    private void Root_OnLoaded(object sender, RoutedEventArgs e)
-    {
-        Thread thread = new Thread(BackgroundMain);
-        thread.Start();
-
-
-    }
-
     private void BackgroundMain()
     {
+        Directory.CreateDirectory("C:/ProgramData/FastExplorer");
 
-        DirectorySearch("C:/Users/noahk/Documents");
-
-        _totalPaths = _paths.Count;
-
+        if (File.Exists("C:/ProgramData/FastExplorer/cache.json"))
+            LoadCache();
+        else
+            GenCache();
         
-        Console.WriteLine("Done Searching!");
-        Console.WriteLine("Total Paths: " + _totalPaths);
-        Console.WriteLine("Max File Name Length: " + maxLength);
         
-        long prog = 0;
-        foreach (var path in _paths.ToArray())
-        {
-            _tree.add(new CharNode(path));
-            
-            prog++;
-            Console.WriteLine(prog + " / " + _totalPaths);
-        }
-        
-        ready = true;
-
-        Console.WriteLine("Done Creating BK Tree!");
+        Console.WriteLine("Ready!");
         
         while (true)
         {
@@ -95,17 +54,14 @@ public partial class MainWindow : Window
             if (query != prevQuery)
             {
                 
-                Console.WriteLine("======================================================================================"); // DEBUG
+                // query the tree                
+                Dictionary<BKTreeNode, int> results = _tree.query(new BKTreeNode(query), 50);
                 
-                Dictionary<CharNode, int> results = _tree.query(new CharNode(query), 5000);
-
+                // sort the results
                 List<string> sortedResults = new List<string>();
 
                 foreach (var result in results)
                 {
-                    if (result.Value < 0)
-                        Console.WriteLine("NEGATIVE INDEX! " + result.Value); // DEBUG
-                    
                     int diff = result.Value - sortedResults.Count;
 
                     if (diff < 0)
@@ -120,34 +76,20 @@ public partial class MainWindow : Window
                     }
                     sortedResults[result.Value] = result.Key.Data;
                 }
-
-                bool foundLowest = false; // DEBUG
-                int lowestDistance = 0; // DEBUG
-                string lowestPath = ""; // DEBUG
                 
+                // put the results in a string
                 StringBuilder resultStringBuilder = new StringBuilder();
                 
                 foreach (var node in sortedResults)
                 {
                     if (node == null || node == "") continue;
                     resultStringBuilder.Append(node).Append('\n');
-
-                    if (!foundLowest)
-                    {
-                        lowestDistance = sortedResults.IndexOf(node);
-                        lowestPath = Path.GetFileName(node);
-                        foundLowest = true;
-                    }
                 }
                 
-                Console.WriteLine("Closest to query: " + lowestPath + " @ " + lowestDistance);
-
-                
-
                 string resultString = resultStringBuilder.ToString();
                 
+                // display the results
                 Dispatcher.Invoke(() => TextBlock.Text = resultString);
-
                 prevQuery = query;
             }
 
@@ -155,68 +97,133 @@ public partial class MainWindow : Window
 
         }
     }
-}
-
-public class CharNode : BKTreeNode
-{
-
-    private char zero = Encoding.ASCII.GetString(new byte[] { 0x0 })[0];
     
-    public ushort Id { get; private set; }
-    public string Data { get; private set; } // String of symbols
-
-    public CharNode(ushort id, string values)
+    
+    private static void GenCache()
     {
-        if (id == 0)
+        Console.WriteLine("Searching...");
+
+        DirectorySearch("C:/Users/noahk/Documents", stackSize);
+
+        _totalPaths = _paths.Count;
+        
+        Console.WriteLine("Done Searching!");
+        Console.WriteLine("Total Paths: " + _totalPaths);
+        Console.WriteLine("Max File Name Length: " + maxLength);
+        Console.WriteLine("Creating BK Tree...");
+
+
+        long prog = 0;
+        int maxStack = 0;
+        foreach (var path in _paths.ToArray())
         {
-            throw new ArgumentException("0 is a reserved Id value");
+            maxStack--;
+            if (maxStack <= 0)
+            {
+                Task task = Task.Run(() =>
+                    _tree.add(new BKTreeNode(path.Replace("\\\\", "/").Replace("\\", "/")))
+                );
+
+                
+                maxStack = stackSize;
+            }
+            else
+            {
+                _tree.add(new BKTreeNode(path.Replace("\\\\", "/").Replace("\\", "/")));
+            }
+
+            prog++;
+            if (maxStack <= 0)
+            {
+                Console.WriteLine(prog + " / " + _totalPaths);
+                maxStack = 0;
+            }
         }
+        
+        Console.WriteLine("Done Creating BK Tree!");
 
-        Data = values;
-        Id = id;
-    }
-
-    public CharNode(string values)
-    {
-        Data = values;
-        Id = 0;
+        SaveCache();
     }
     
-    // The only required method of abstract class BKTreeNode
-    protected override int calculateDistance(BKTreeNode node)
+    private static void LoadCache()
     {
-        string source = Path.GetFileName(Data).ToLower();
-        string target = Path.GetFileName(((CharNode)node).Data).ToLower();
+        FileStream cacheStream = File.OpenRead("C:/ProgramData/FastExplorer/cache.json");
+        
+        Span<byte> jsonBytes = new Span<byte>(new byte[cacheStream.Length]);
+        
+        cacheStream.Read(jsonBytes);
+        
+        Console.WriteLine(jsonBytes.Length);
+
+        
+        JObject? jsonObject = JsonConvert.DeserializeObject<JObject>(Encoding.UTF8.GetString(jsonBytes), new JsonSerializerSettings
+        {
+            MaxDepth = 1024
+        });
+        
+        _tree.getRoot().FromJson(jsonObject);
+
+        
+        cacheStream.Dispose();
         
         
-        int diff = source.Length - target.Length;
-        
-        if (diff > 0)
-            target += charGen(zero, diff);
-        if (diff < 0)
-            source += charGen(zero, -diff);
-        
-        // return DistanceMetric.calculateLeeDistance(
-        //     Encoding.ASCII.GetBytes(source), Encoding.ASCII.GetBytes(target));
-        //
-        
-        int distance = DistanceMetric.CalculateContainsPartial(source, target);
-        
-        if (source == "findme.txt")
-            Console.WriteLine("dist. to \"FindMe.txt\": " + distance);
-        
-        return distance;
+        Console.WriteLine("Done Loading BK Tree!");
+
+        SaveCache();
     }
 
-    private string charGen(char input, int count)
+    private static void SaveCache()
     {
-        StringBuilder result = new StringBuilder();
+        Console.WriteLine("Saving BK Tree...");
         
-        for (int i = 0; i < count; i++)
+        JObject treeJson = _tree.getRoot().ToJson();
+        FileStream cacheStream = File.OpenWrite("C:/ProgramData/FastExplorer/cache.json");
+        
+        cacheStream.SetLength(0);
+        cacheStream.Flush();
+        
+        JsonWriter cacheJson = new JsonTextWriter(new StreamWriter(cacheStream));
+        treeJson.WriteTo(cacheJson);
+        
+        cacheJson.Close();
+        cacheStream.Close();
+        
+        Console.WriteLine("Done Saving BK Tree!");
+    }
+    
+    private static void DirectorySearch(string dir, int maxStack)
+    {
+        maxStack--;
+        try
         {
-            result.Append(input);
-        }
+            foreach (string f in Directory.GetFiles(dir))
+            {
+                _paths.Add(Path.GetFullPath(f));
 
-        return result.ToString();
+                if (Path.GetFileName(f).Length > maxLength)
+                    maxLength = Path.GetFileName(f).Length;
+            }
+
+            foreach (string d in Directory.GetDirectories(dir))
+            {
+                _paths.Add(Path.GetFullPath(d));
+
+                if (maxStack <= 0) {
+                    Task task = Task.Run(() => DirectorySearch(d, stackSize));
+                    task.Start();
+                } else
+                    DirectorySearch(d, maxStack - 1);
+            }
+        }
+        catch (Exception) {}
+
+    }
+    
+    private void Root_OnLoaded(object sender, RoutedEventArgs e)
+    {
+        Thread thread = new Thread(BackgroundMain);
+        thread.Start();
+
+
     }
 }
