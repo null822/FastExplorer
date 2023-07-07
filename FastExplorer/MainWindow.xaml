@@ -3,31 +3,28 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:FastExplorer"
         mc:Ignorable="d"
         Title="MainWindow" Height="450" Width="800">
-    
+
     <Grid Name="Root" Loaded="Root_OnLoaded">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="10*"/>
+            <ColumnDefinition Width="10*" />
         </Grid.ColumnDefinitions>
-            
+
         <Grid.RowDefinitions>
-            <RowDefinition/>
-            <RowDefinition Height="16*"/>
+            <RowDefinition />
+            <RowDefinition Height="16*" />
         </Grid.RowDefinitions>
-            
-        <TextBox MaxLines="1" Name="TextBox" Grid.Column="0" Width="200" Height="25" Grid.Row="0" 
-                 HorizontalAlignment="Center" VerticalAlignment="Top">
-        </TextBox>
-            
-            
+
+        <TextBox MaxLines="1" Name="TextBox" Grid.Column="0" Width="200" Height="25" Grid.Row="0"
+                 HorizontalAlignment="Center" VerticalAlignment="Top" />
+
+
         <ScrollViewer Grid.Column="0" Grid.Row="1">
-            <TextBlock Name="TextBlock" IsEnabled="False" HorizontalAlignment="Center">
-            </TextBlock>
+            <TextBlock Name="TextBlock" IsEnabled="False" HorizontalAlignment="Center" />
         </ScrollViewer>
-        
+
     </Grid>
-    
-    
+
+
 </Window>

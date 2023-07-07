@@ -1,99 +1,97 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
+using static FastExplorer.MainWindow;
 
 namespace FastExplorer.bk_tree;
 
-[Serializable]
 public class BKTreeNode
 {
-    public volatile Dictionary<int, BKTreeNode> _children;
-    public string Data { get; private set; } // String of symbols
-    
-    
+    private volatile Dictionary<int, BKTreeNode> _children;
+    public string Data { get; }
+
     public BKTreeNode(string values)
     {
         Data = values;
         _children = new Dictionary<int, BKTreeNode>(1);
     }
-    
-    protected int CalculateDistance(BKTreeNode node)
+
+
+    private int CalculateDistance(BKTreeNode node)
     {
-        string source = Path.GetFileName(Data).ToLower();
-        string target = Path.GetFileName(node.Data).ToLower();
-        
-        int distance = DistanceMetric.CalculateContainsPartial(source, target);
-        
-        if (source == "findme.txt")
-            Console.WriteLine("dist. to \"FindMe.txt\": " + distance);
-        
+        var source = Path.GetFileName(Data).ToLower();
+        var target = Path.GetFileName(node.Data).ToLower();
+
+        var distance = DistanceMetric.CalculateContainsPartial(source, target);
+
         return distance;
     }
 
-    private static string CharGen(char input, int count)
-    {
-        StringBuilder result = new StringBuilder();
-        
-        for (int i = 0; i < count; i++)
-        {
-            result.Append(input);
-        }
+    // private static string CharGen(char input, int count)
+    // {
+    //     var result = new StringBuilder();
+    //
+    //     for (var i = 0; i < count; i++) result.Append(input);
+    //
+    //     return result.ToString();
+    // }
+    //
+    // public Dictionary<int, BKTreeNode> GetChildNodes()
+    // {
+    //     return _children;
+    // }
 
-        return result.ToString();
-    }
-    
-    public Dictionary<int, BKTreeNode> GetChildNodes()
+    public void Add(BKTreeNode node)
     {
-        return _children;
-    }
+        var distance = CalculateDistance(node);
         
-    public virtual void Add(BKTreeNode node)
-    {
-        int distance = CalculateDistance(node);
-
-        if (_children.ContainsKey(distance))
-        {
-            _children[distance].Add(node);
-        }
+        if (_children.TryGetValue(distance, out var value))
+            SubTasks.Add(Task.Run(() =>
+                value.Add(node)
+            ));
         else
         {
-            _children.Add(distance, node);
+            SubTasks.Add(Task.Run(() => {
+                try
+                {
+                    _children.Add(distance, node);
+                }
+                catch
+                {
+                    Add(node);
+                }
+            }));
         }
     }
 
     public virtual int FindBestMatch(BKTreeNode node, int bestDistance, out BKTreeNode bestNode)
     {
-        int distanceAtNode = CalculateDistance(node);
+        var distanceAtNode = CalculateDistance(node);
 
         bestNode = node;
 
-        if(distanceAtNode < bestDistance)
+        if (distanceAtNode < bestDistance)
         {
             bestDistance = distanceAtNode;
             bestNode = this;
         }
 
-        foreach (int distance in _children.Keys)
-        {
+        foreach (var distance in _children.Keys)
             if (distance < distanceAtNode + bestDistance)
             {
-                int possibleBest = _children[distance].FindBestMatch(node, bestDistance, out bestNode);
-                if (possibleBest < bestDistance)
-                {
-                    bestDistance = possibleBest;
-                }
+                var possibleBest = _children[distance].FindBestMatch(node, bestDistance, out bestNode);
+                if (possibleBest < bestDistance) bestDistance = possibleBest;
             }
-        }
 
         return bestDistance;
     }
 
     public virtual void Query(BKTreeNode node, int threshold, Dictionary<BKTreeNode, int> collected)
     {
-        int distanceAtNode = CalculateDistance(node);
+        var distanceAtNode = CalculateDistance(node);
 
         if (distanceAtNode == threshold)
         {
@@ -101,28 +99,39 @@ public class BKTreeNode
             return;
         }
 
-        if (distanceAtNode < threshold)
-        {
-            collected.Add(this, distanceAtNode);
-        }
+        if (distanceAtNode < threshold) collected.Add(this, distanceAtNode);
 
-        for (int distance = (distanceAtNode - threshold); distance <= (threshold + distanceAtNode); distance++)
-        {
-            if (_children.ContainsKey(distance))
-            {
-                _children[distance].Query(node, threshold, collected);
-            }
-        }
+        for (var distance = distanceAtNode - threshold; distance <= threshold + distanceAtNode; distance++)
+            if (_children.TryGetValue(distance, out var value))
+                value.Query(node, threshold, collected);
     }
     
     public JObject ToJson()
     {
-        JObject node = new JObject();
+        if (DebugCount >= 4096)
+        {
+            DebugCount = 0;
+            Console.WriteLine("Creating BK Tree (4096ly update) | " + Progress + " / " + GetTotalPaths() + " | " +
+                              Math.Round((float)Progress / GetTotalPaths() * 100) + "%");
+        }
+        
+        Progress++;
+        DebugCount++;
+        
+        var node = new JObject();
 
         foreach (var child in _children)
         {
-            JObject jsonChildren = new JObject { { "key", child.Key }, { "children", child.Value.ToJson()} };
+            JObject? childJson = null;
+
+            Task task = Task.Run(() =>
+                childJson = child.Value.ToJson()
+            );
+
+            WaitForTask(task, 10);
             
+            var jsonChildren = new JObject { { "key", child.Key }, { "children", childJson } };
+
             node.Add(child.Value.Data, jsonChildren);
         }
         
@@ -132,16 +141,21 @@ public class BKTreeNode
     public void FromJson(JObject? tree)
     {
         if (tree == null) return;
-        
+
         foreach (var child in tree)
         {
-            BKTreeNode node = new BKTreeNode(child.Key);
-            
-            node.FromJson(child.Value["children"].Value<JObject>());
+            var node = new BKTreeNode(child.Key);
+
+            Task task = Task.Run(() =>
+                node.FromJson(child.Value["children"].Value<JObject>())
+            );
+            while (true)
+            {
+                if (task.Status != TaskStatus.Running) break;
+                Thread.Sleep(10);
+            }
             
             _children.Add(child.Value["key"].Value<int>(), node);
         }
-        
     }
-    
 }

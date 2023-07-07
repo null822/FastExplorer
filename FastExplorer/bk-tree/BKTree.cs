@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+﻿using System.Collections.Generic;
 
 
 /*
@@ -28,23 +25,17 @@ using Newtonsoft.Json.Linq;
 
 namespace FastExplorer.bk_tree;
 
-[Serializable]
 public class BKTree
 {
+    private readonly Dictionary<BKTreeNode, int> _matches = new();
     private volatile BKTreeNode _root = new("");
 
-    private readonly Dictionary<BKTreeNode, Int32> _matches = new();
-
-    public void add(BKTreeNode node)
+    public void Add(BKTreeNode node)
     {
         if (_root != null)
-        {
             _root.Add(node);
-        }
         else
-        {
             _root = node;
-        }
     }
 
     /**
@@ -56,13 +47,13 @@ public class BKTree
      * @param threshold
      * @return
      */
-    public Dictionary<BKTreeNode, Int32> query(BKTreeNode searchNode, int threshold)
+    public Dictionary<BKTreeNode, int> Query(BKTreeNode searchNode, int threshold)
     {
-        Dictionary<BKTreeNode, Int32> matches = new Dictionary<BKTreeNode, Int32>();
+        var matches = new Dictionary<BKTreeNode, int>();
 
         _root.Query(searchNode, threshold, matches);
 
-        return copyMatches(matches);
+        return CopyMatches(matches);
     }
 
     /**
@@ -70,10 +61,10 @@ public class BKTree
      * @param node
      * @return The edit distance of the best match
      */
-    public int findBestDistance(BKTreeNode node)
+    public int FindBestDistance(BKTreeNode node)
     {
         BKTreeNode bestNode;
-        return _root.FindBestMatch(node, Int32.MaxValue, out bestNode);
+        return _root.FindBestMatch(node, int.MaxValue, out bestNode);
     }
 
     /**
@@ -81,10 +72,9 @@ public class BKTree
      * @param node
      * @return A match that is within the best edit distance of the search node.
      */
-    public BKTreeNode findBestNode(BKTreeNode node)
+    public BKTreeNode FindBestNode(BKTreeNode node)
     {
-        BKTreeNode bestNode;
-        _root.FindBestMatch(node, Int32.MaxValue, out bestNode);
+        _root.FindBestMatch(node, int.MaxValue, out var bestNode);
         return (BKTreeNode)bestNode;
     }
 
@@ -93,50 +83,26 @@ public class BKTree
      * @param node
      * @return A match that is within the best edit distance of the search node.
      */
-    public Dictionary<BKTreeNode, Int32> findBestNodeWithDistance(BKTreeNode node)
+    public Dictionary<BKTreeNode, int> FindBestNodeWithDistance(BKTreeNode node)
     {
-        BKTreeNode bestNode;
-        int distance = _root.FindBestMatch(node, Int32.MaxValue, out bestNode);
+        var distance = _root.FindBestMatch(node, int.MaxValue, out var bestNode);
         _matches.Clear();
-        _matches.Add((BKTreeNode)bestNode, distance);
+        _matches.Add(bestNode, distance);
         return _matches;
     }
 
-    private Dictionary<BKTreeNode,Int32> copyMatches(Dictionary<BKTreeNode,Int32>source)
+    private Dictionary<BKTreeNode, int> CopyMatches(Dictionary<BKTreeNode, int> source)
     {
         _matches.Clear();
 
-        foreach (KeyValuePair<BKTreeNode, Int32> pair in source)
-        {
-            _matches.Add((BKTreeNode)pair.Key, pair.Value);
-        }
+        foreach (var pair in source) _matches.Add((BKTreeNode)pair.Key, pair.Value);
 
         return _matches;
     }
-    
 
-    public BKTreeNode getRoot()
+
+    public BKTreeNode GetRoot()
     {
         return _root;
     }
-    
-    // public JObject ToJson()
-    // {
-    //     JsonSerializer serializer = new JsonSerializer();
-    //     serializer.MaxDepth = 1024;
-    //     
-    //     return JObject.FromObject(_root, serializer);
-    // }
-    //
-    // public void FromJson(JObject? tree)
-    // {
-    //     JsonSerializer serializer = new JsonSerializer
-    //     {
-    //         MaxDepth = 1024
-    //     };
-    //     
-    //     _root = tree.ToObject<BKTreeNode>(serializer);
-    //     
-    //     Console.WriteLine(_root.GetChildNodes()[0].Data);
-    // }
 }
